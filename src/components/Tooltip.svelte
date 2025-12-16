@@ -1,33 +1,49 @@
 <script>
-    export let selection;
-    export let width;
-    export let height;
-    export let projection;
-    export let puertoType;
-    export let colorRanges;
-
     import { fly, fade } from "svelte/transition";
 
-    let tooltipWidth;
-    let tooltipHeight;
+    export let selection;
+    export let projection;
+    export let svgEl;
+    export let puertoType;
+
+    let tooltipWidth = 0;
+    let tooltipHeight = 0;
 
     const xOffset = 10;
     const yOffset = 10;
 
-    // Posición base del punto
-    $: [pointX, pointY] = projection([selection.longitude, selection.latitude]);
+    // Coordenadas SVG
+    $: [svgX, svgY] = projection([selection.longitude, selection.latitude]);
 
-    // X: derecha del punto, o izquierda si se sale
-    $: xPosition =
-        pointX + tooltipWidth + xOffset < width
-            ? pointX + xOffset + 10
-            : pointX - tooltipWidth - xOffset;
+    // Bounding box real del SVG
+    $: svgRect = svgEl?.getBoundingClientRect();
 
-    // Y: debajo del punto, o arriba si se sale
-    $: yPosition =
-        pointY + tooltipHeight + yOffset < height
-            ? pointY + yOffset
-            : pointY - tooltipHeight - yOffset;
+    // Escalas SVG → pantalla
+    $: scaleX = svgRect ? svgRect.width / svgEl.viewBox.baseVal.width : 1;
+
+    $: scaleY = svgRect ? svgRect.height / svgEl.viewBox.baseVal.height : 1;
+
+    // Coordenadas reales del punto
+    $: screenX = svgRect ? svgRect.left + svgX * scaleX : 0;
+
+    $: screenY = svgRect ? svgRect.top + svgY * scaleY : 0;
+
+    // ⚠️ GUARDIA: no calcular hasta tener tamaño
+    $: canPosition = tooltipWidth > 0 && tooltipHeight > 0 && svgRect;
+
+    // Horizontal: derecha o izquierda (TU lógica)
+    $: xPosition = canPosition
+        ? screenX + tooltipWidth + xOffset < svgRect.right
+            ? screenX + xOffset
+            : screenX - tooltipWidth - xOffset
+        : 0;
+
+    // Vertical: abajo o arriba (TU lógica)
+    $: yPosition = canPosition
+        ? screenY + tooltipHeight + yOffset < svgRect.bottom
+            ? screenY + yOffset
+            : screenY - tooltipHeight - yOffset
+        : 0;
 </script>
 
 <div
@@ -35,29 +51,32 @@
     in:fly={{ y: 8, duration: 120 }}
     out:fade
     style="
-        position: absolute;
-        left: {xPosition}px;
-        top: {yPosition}px;
-    "
+    position: fixed;
+    left: {xPosition}px;
+    top: {yPosition}px;
+    opacity: {canPosition ? 1 : 0};
+  "
     bind:clientWidth={tooltipWidth}
     bind:clientHeight={tooltipHeight}
 >
     <h1>{selection.estacion}</h1>
-    <h2>
-        {selection.estacion === selection.estacion ? "" : selection.estacion}
-    </h2>
+
     <div class="info">
         <span
             class="cambio"
-            style="background:{colorRanges[
-                puertoType
-            ][1]}; color:white; font-weight:800"
-            >{selection[puertoType] > 100
+            style="
+        background: #cc1414;
+        color: white;
+        font-weight: 800;
+      "
+        >
+            {selection[puertoType] > 100
                 ? (
                       Math.round(selection[puertoType] / 100) * 100
                   ).toLocaleString("es-ES")
-                : selection[puertoType].toLocaleString("es-ES")} pasajeros</span
-        >
+                : selection[puertoType].toLocaleString("es-ES")}
+            pasajeros
+        </span>
     </div>
 </div>
 
@@ -69,13 +88,20 @@
         border-radius: 3px;
         pointer-events: none;
         transition:
-            top 50ms ease,
-            left 50ms ease;
+            top 60ms ease,
+            left 60ms ease,
+            opacity 80ms ease;
+        z-index: 10;
+    }
+
+    h1 {
+        font-size: 1rem;
+        font-weight: 500;
+        margin-bottom: 3px;
     }
 
     .info {
         display: flex;
-        justify-content: space-between;
         column-gap: 8px;
         align-items: center;
     }
@@ -85,22 +111,5 @@
         padding: 3px;
         border-radius: 3px;
         font-weight: 600;
-    }
-
-    h1 {
-        font-size: 1rem;
-        font-weight: 500;
-        margin-bottom: 3px;
-    }
-
-    h2 {
-        font-size: 0.75rem;
-        font-weight: 400;
-        font-style: italic;
-        margin-bottom: 5px;
-    }
-
-    .tooltip {
-        transform: translateZ(0);
     }
 </style>
